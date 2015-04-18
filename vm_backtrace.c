@@ -383,7 +383,7 @@ location_callee_m(VALUE self)
     rb_backtrace_location_t * location;
 
     location = location_ptr(self);
-    if (location->callee != Qnil) {
+    if (location->callee) {
         return ID2SYM(location->callee);
     } else {
         return Qnil;
@@ -513,6 +513,8 @@ bt_init(void *ptr, size_t size)
     arg->bt->backtrace_size = 0;
 }
 
+ID frame_called_id(rb_control_frame_t *cfp);
+
 static void
 bt_iter_iseq(void *ptr, const rb_control_frame_t *cfp)
 {
@@ -522,12 +524,11 @@ bt_iter_iseq(void *ptr, const rb_control_frame_t *cfp)
     rb_backtrace_location_t *loc = &arg->bt->backtrace[arg->bt->backtrace_size++];
     loc->type = LOCATION_TYPE_ISEQ;
     loc->self = cfp->self;
+    loc->callee = frame_called_id((rb_control_frame_t *)cfp);
     loc->body.iseq.iseq = iseq;
     loc->body.iseq.lineno.pc = pc;
     arg->prev_loc = loc;
 }
-
-ID frame_called_id(rb_control_frame_t *cfp);
 
 static void
 bt_iter_cfunc(void *ptr, const rb_control_frame_t *cfp, ID mid)
@@ -536,7 +537,6 @@ bt_iter_cfunc(void *ptr, const rb_control_frame_t *cfp, ID mid)
     rb_backtrace_location_t *loc = &arg->bt->backtrace[arg->bt->backtrace_size++];
     loc->self = cfp->self;
     loc->callee = frame_called_id((rb_control_frame_t *)cfp);
-    loc->callee = cfp->self;
     loc->type = LOCATION_TYPE_CFUNC;
     loc->body.cfunc.mid = mid;
     loc->body.cfunc.prev_loc = arg->prev_loc;
