@@ -966,7 +966,7 @@ frame_func_id(rb_control_frame_t *cfp)
     return 0;
 }
 
-static ID
+ID
 frame_called_id(rb_control_frame_t *cfp)
 {
     const rb_method_entry_t *me_local;

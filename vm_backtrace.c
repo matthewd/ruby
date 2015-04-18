@@ -54,6 +54,8 @@ typedef struct rb_backtrace_location_struct {
 	LOCATION_TYPE_IFUNC
     } type;
 
+    VALUE self;
+    ID callee;
     union {
 	struct {
 	    const rb_iseq_t *iseq;
@@ -79,6 +81,7 @@ location_mark(void *ptr)
 {
     struct valued_frame_info *vfi = (struct valued_frame_info *)ptr;
     rb_gc_mark(vfi->btobj);
+    rb_gc_mark(vfi->loc->self);
 }
 
 static void
@@ -365,6 +368,28 @@ location_inspect_m(VALUE self)
     return rb_str_inspect(location_to_str(location_ptr(self)));
 }
 
+static VALUE
+location_owner_m(VALUE self)
+{
+    rb_backtrace_location_t * location;
+
+    location = location_ptr(self);
+    return location->self;
+}
+
+static VALUE
+location_callee_m(VALUE self)
+{
+    rb_backtrace_location_t * location;
+
+    location = location_ptr(self);
+    if (location->callee != Qnil) {
+        return ID2SYM(location->callee);
+    } else {
+        return Qnil;
+    }
+}
+
 typedef struct rb_backtrace_struct {
     rb_backtrace_location_t *backtrace;
     rb_backtrace_location_t *backtrace_base;
@@ -496,16 +521,22 @@ bt_iter_iseq(void *ptr, const rb_control_frame_t *cfp)
     struct bt_iter_arg *arg = (struct bt_iter_arg *)ptr;
     rb_backtrace_location_t *loc = &arg->bt->backtrace[arg->bt->backtrace_size++];
     loc->type = LOCATION_TYPE_ISEQ;
+    loc->self = cfp->self;
     loc->body.iseq.iseq = iseq;
     loc->body.iseq.lineno.pc = pc;
     arg->prev_loc = loc;
 }
+
+ID frame_called_id(rb_control_frame_t *cfp);
 
 static void
 bt_iter_cfunc(void *ptr, const rb_control_frame_t *cfp, ID mid)
 {
     struct bt_iter_arg *arg = (struct bt_iter_arg *)ptr;
     rb_backtrace_location_t *loc = &arg->bt->backtrace[arg->bt->backtrace_size++];
+    loc->self = cfp->self;
+    loc->callee = frame_called_id((rb_control_frame_t *)cfp);
+    loc->callee = cfp->self;
     loc->type = LOCATION_TYPE_CFUNC;
     loc->body.cfunc.mid = mid;
     loc->body.cfunc.prev_loc = arg->prev_loc;
@@ -1047,6 +1078,8 @@ Init_vm_backtrace(void)
     rb_define_method(rb_cBacktraceLocation, "absolute_path", location_absolute_path_m, 0);
     rb_define_method(rb_cBacktraceLocation, "to_s", location_to_str_m, 0);
     rb_define_method(rb_cBacktraceLocation, "inspect", location_inspect_m, 0);
+    rb_define_method(rb_cBacktraceLocation, "owner", location_owner_m, 0);
+    rb_define_method(rb_cBacktraceLocation, "callee", location_callee_m, 0);
 
     rb_define_global_function("caller", rb_f_caller, -1);
     rb_define_global_function("caller_locations", rb_f_caller_locations, -1);
