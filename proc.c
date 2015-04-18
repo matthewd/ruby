@@ -1238,7 +1238,7 @@ mnew_internal(rb_method_entry_t *me, VALUE defined_class, VALUE klass,
     return method;
 }
 
-static VALUE
+VALUE
 mnew_from_me(rb_method_entry_t *me, VALUE defined_class, VALUE klass,
 	     VALUE obj, ID id, VALUE mclass, int scope)
 {

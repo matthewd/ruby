@@ -54,8 +54,9 @@ typedef struct rb_backtrace_location_struct {
 	LOCATION_TYPE_IFUNC
     } type;
 
-    VALUE self;
+    VALUE owner;
     ID callee;
+    VALUE method;
     union {
 	struct {
 	    const rb_iseq_t *iseq;
@@ -81,7 +82,8 @@ location_mark(void *ptr)
 {
     struct valued_frame_info *vfi = (struct valued_frame_info *)ptr;
     rb_gc_mark(vfi->btobj);
-    rb_gc_mark(vfi->loc->self);
+    rb_gc_mark(vfi->loc->owner);
+    rb_gc_mark(vfi->loc->method);
 }
 
 static void
@@ -374,7 +376,16 @@ location_owner_m(VALUE self)
     rb_backtrace_location_t * location;
 
     location = location_ptr(self);
-    return location->self;
+    return location->owner;
+}
+
+static VALUE
+location_method_m(VALUE self)
+{
+    rb_backtrace_location_t * location;
+
+    location = location_ptr(self);
+    return location->method;
 }
 
 static VALUE
@@ -515,6 +526,37 @@ bt_init(void *ptr, size_t size)
 
 ID frame_called_id(rb_control_frame_t *cfp);
 
+static VALUE
+get_klass(const rb_control_frame_t *cfp);
+
+VALUE
+mnew_from_me(rb_method_entry_t *me, VALUE defined_class, VALUE klass,
+	     VALUE obj, ID id, VALUE mclass, int scope);
+
+const rb_method_entry_t *
+frame_method_entry(rb_control_frame_t *cfp);
+
+VALUE
+frame_method_obj(rb_control_frame_t *cfp);
+
+static VALUE
+get_method(const rb_control_frame_t *cfp)
+{
+    VALUE obj = frame_method_obj((rb_control_frame_t *)cfp);
+    if (obj != Qnil) {
+	return obj;
+    } else {
+	const rb_method_entry_t *me = frame_method_entry((rb_control_frame_t *)cfp);
+	VALUE klass = get_klass(cfp);
+
+	if (me) {
+	    return mnew_from_me((rb_method_entry_t *)me, klass, klass, cfp->self, frame_called_id((rb_control_frame_t *)cfp), rb_cMethod, FALSE);
+	} else {
+	    return Qnil;
+	}
+    }
+}
+
 static void
 bt_iter_iseq(void *ptr, const rb_control_frame_t *cfp)
 {
@@ -523,7 +565,8 @@ bt_iter_iseq(void *ptr, const rb_control_frame_t *cfp)
     struct bt_iter_arg *arg = (struct bt_iter_arg *)ptr;
     rb_backtrace_location_t *loc = &arg->bt->backtrace[arg->bt->backtrace_size++];
     loc->type = LOCATION_TYPE_ISEQ;
-    loc->self = cfp->self;
+    loc->owner = get_klass(cfp);
+    loc->method = get_method(cfp);
     loc->callee = frame_called_id((rb_control_frame_t *)cfp);
     loc->body.iseq.iseq = iseq;
     loc->body.iseq.lineno.pc = pc;
@@ -535,7 +578,8 @@ bt_iter_cfunc(void *ptr, const rb_control_frame_t *cfp, ID mid)
 {
     struct bt_iter_arg *arg = (struct bt_iter_arg *)ptr;
     rb_backtrace_location_t *loc = &arg->bt->backtrace[arg->bt->backtrace_size++];
-    loc->self = cfp->self;
+    loc->owner = get_klass(cfp);
+    loc->method = get_method(cfp);
     loc->callee = frame_called_id((rb_control_frame_t *)cfp);
     loc->type = LOCATION_TYPE_CFUNC;
     loc->body.cfunc.mid = mid;
@@ -1079,6 +1123,7 @@ Init_vm_backtrace(void)
     rb_define_method(rb_cBacktraceLocation, "to_s", location_to_str_m, 0);
     rb_define_method(rb_cBacktraceLocation, "inspect", location_inspect_m, 0);
     rb_define_method(rb_cBacktraceLocation, "owner", location_owner_m, 0);
+    rb_define_method(rb_cBacktraceLocation, "method", location_method_m, 0);
     rb_define_method(rb_cBacktraceLocation, "callee", location_callee_m, 0);
 
     rb_define_global_function("caller", rb_f_caller, -1);

@@ -996,6 +996,54 @@ frame_called_id(rb_control_frame_t *cfp)
     return 0;
 }
 
+VALUE
+frame_method_obj(rb_control_frame_t *cfp)
+{
+    const rb_method_entry_t *me_local;
+    rb_iseq_t *iseq = cfp->iseq;
+    if (cfp->me) {
+	return Qnil;
+    }
+    while (iseq) {
+	if (RUBY_VM_IFUNC_P(iseq)) {
+	    return (VALUE)((struct vm_ifunc *)iseq)->data;
+	}
+	me_local = method_entry_of_iseq(cfp, iseq);
+	if (me_local) {
+	    return Qnil;
+	}
+	if (iseq->local_iseq == iseq) {
+	    break;
+	}
+	iseq = iseq->parent_iseq;
+    }
+    return Qnil;
+}
+
+const rb_method_entry_t *
+frame_method_entry(rb_control_frame_t *cfp)
+{
+    const rb_method_entry_t *me_local;
+    rb_iseq_t *iseq = cfp->iseq;
+    if (cfp->me) {
+	return cfp->me;
+    }
+    while (iseq) {
+	if (RUBY_VM_IFUNC_P(iseq)) {
+	    return NULL;
+	}
+	me_local = method_entry_of_iseq(cfp, iseq);
+	if (me_local) {
+	    return me_local;
+	}
+	if (iseq->local_iseq == iseq) {
+	    break;
+	}
+	iseq = iseq->parent_iseq;
+    }
+    return NULL;
+}
+
 ID
 rb_frame_this_func(void)
 {
