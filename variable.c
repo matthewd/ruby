@@ -1909,8 +1909,23 @@ static const rb_data_type_t autoload_data_i_type = {
 void
 rb_autoload(VALUE mod, ID id, const char *file)
 {
+    VALUE fn;
+
+    if (!file || !*file) {
+	rb_raise(rb_eArgError, "empty file name");
+    }
+    fn = rb_str_new2(file);
+    FL_UNSET(fn, FL_TAINT);
+    OBJ_FREEZE(fn);
+
+    rb_autoload_value(mod, id, fn);
+}
+
+void
+rb_autoload_value(VALUE mod, ID id, VALUE source)
+{
     st_data_t av;
-    VALUE ad, fn;
+    VALUE ad;
     struct st_table *tbl;
     struct autoload_data_i *ele;
     rb_const_entry_t *ce;
@@ -1918,9 +1933,6 @@ rb_autoload(VALUE mod, ID id, const char *file)
     if (!rb_is_const_id(id)) {
 	rb_raise(rb_eNameError, "autoload must be constant name: %"PRIsVALUE"",
 		 QUOTE_ID(id));
-    }
-    if (!file || !*file) {
-	rb_raise(rb_eArgError, "empty file name");
     }
 
     ce = rb_const_lookup(mod, id);
@@ -1940,12 +1952,9 @@ rb_autoload(VALUE mod, ID id, const char *file)
 	RB_OBJ_WRITTEN(mod, Qnil, av);
 	DATA_PTR(av) = tbl = st_init_numtable();
     }
-    fn = rb_str_new2(file);
-    FL_UNSET(fn, FL_TAINT);
-    OBJ_FREEZE(fn);
 
     ad = TypedData_Make_Struct(0, struct autoload_data_i, &autoload_data_i_type, ele);
-    ele->feature = fn;
+    ele->feature = source;
     ele->safe_level = rb_safe_level();
     ele->thread = Qnil;
     ele->value = Qundef;
@@ -1995,6 +2004,13 @@ check_autoload_required(VALUE mod, ID id, const char **loadingpath)
 	return 0;
     }
     file = ele->feature;
+    if (rb_obj_is_proc(file)) {
+	if (ele->thread == rb_thread_current()) {
+	    return 0;
+	} else {
+	    return load;
+	}
+    }
     Check_Type(file, T_STRING);
     if (!RSTRING_PTR(file) || !*RSTRING_PTR(file)) {
 	rb_raise(rb_eArgError, "empty file name");
@@ -2064,7 +2080,11 @@ static VALUE
 autoload_require(VALUE arg)
 {
     struct autoload_data_i *ele = (struct autoload_data_i *)arg;
-    return rb_funcall(rb_vm_top_self(), rb_intern("require"), 1, ele->feature);
+    if (rb_obj_is_proc(ele->feature)) {
+	return rb_funcall(ele->feature, rb_intern("call"), 0);
+    } else {
+	return rb_funcall(rb_vm_top_self(), rb_intern("require"), 1, ele->feature);
+    }
 }
 
 static VALUE

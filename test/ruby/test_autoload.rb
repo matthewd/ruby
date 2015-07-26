@@ -212,6 +212,58 @@ p Foo::Bar
     Kernel.module_eval do; alias :require :old_require; undef :old_require; end
   end
 
+  def test_simple_proc_invocation
+    calls = 0
+    add_autoload -> {
+      calls += 1
+      ::Object.const_set(:AutoloadTest, 999)
+      0
+    }
+    assert_equal(999, Object::AutoloadTest)
+    assert_equal(999, Object::AutoloadTest)
+    assert_equal(1, calls)
+  ensure
+    remove_autoload_constant
+  end
+
+  def test_concurrent_proc_invocation
+    require 'monitor'
+    calls = 0
+    n = 0
+    m = Monitor.new
+    add_autoload -> {
+      calls += 1
+      sleep 0.1 until calls >= 2
+      m.synchronize {
+        if ::Object.autoload?(:AutoloadTest)
+          ::Object.const_set :AutoloadTest, "x#{n += 1}"
+        end
+      }
+    }
+    t1 = Thread.new { Object::AutoloadTest }
+    t2 = Thread.new { Object::AutoloadTest }
+    assert_equal 'x1', t1.value
+    assert_equal 'x1', t2.value
+    assert_equal(2, calls)
+    assert_equal(1, n)
+  ensure
+    remove_autoload_constant
+  end
+
+  def test_proc_with_class_definition
+    add_autoload -> {
+      Tempfile.create(['autoload', '.rb']) {|file|
+        file.puts 'class AutoloadTest; end'
+        file.close
+        @autoload_paths << file.path
+        require file.path
+      }
+    }
+    assert(Object::AutoloadTest)
+  ensure
+    remove_autoload_constant
+  end
+
   def add_autoload(path)
     (@autoload_paths ||= []) << path
     ::Object.class_eval {autoload(:AutoloadTest, path)}

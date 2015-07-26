@@ -1123,8 +1123,12 @@ rb_mod_autoload(VALUE mod, VALUE sym, VALUE file)
 {
     ID id = rb_to_id(sym);
 
-    FilePathValue(file);
-    rb_autoload(mod, id, RSTRING_PTR(file));
+    if (rb_obj_is_proc(file)) {
+	rb_autoload_value(mod, id, file);
+    } else {
+	FilePathValue(file);
+	rb_autoload(mod, id, RSTRING_PTR(file));
+    }
     return Qnil;
 }
 

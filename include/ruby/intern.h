@@ -935,6 +935,7 @@ VALUE rb_path2class(const char*);
 void rb_name_class(VALUE, ID);
 VALUE rb_class_name(VALUE);
 void rb_autoload(VALUE, ID, const char*);
+void rb_autoload_value(VALUE, ID, VALUE);
 VALUE rb_autoload_load(VALUE, ID);
 VALUE rb_autoload_p(VALUE, ID);
 VALUE rb_f_trace_var(int, const VALUE*);
